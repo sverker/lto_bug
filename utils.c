@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2020. All Rights Reserved.
+ * Copyright Ericsson AB 2021. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,39 +23,18 @@
 
 #include "utils.h"
 
-typedef struct
+/* Failed assert do exit(1) */
+#define ASSERT(x, ERROR) ((x) ? (void)1 : (printf("ASSERT: "ERROR "\n"), exit(1)))
+
+static void erts_qsort_swap(unsigned item_size,
+                            char* iptr,
+                            char* jptr)
 {
-    byte* pivot_part_start;
-    byte* pivot_part_end;
-} erts_qsort_partion_array_result;
-
-static void erts_qsort_swap(size_t item_size, byte* ivp, byte* jvp);
-void erts_qsort_check_part(byte *base,
-                           size_t nr_of_items,
-                           size_t item_size,
-                           erts_void_ptr_cmp_t compare,
-                           byte* pivot);
-
-
-static void erts_qsort_helper(byte *base,
-                              size_t nr_of_items,
-                              size_t item_size,
-                              erts_void_ptr_cmp_t compare);
-static byte*
-erts_qsort_partion_array(byte *base,
-                         size_t nr_of_items,
-                         size_t item_size,
-                         erts_void_ptr_cmp_t compare);
-
-static void erts_qsort_swap(size_t item_size,
-                            byte* iptr,
-                            byte* jptr)
-{
-    UWord* iwp = (UWord*) iptr;
-    UWord* jwp = (UWord*) jptr;
-    size_t cnt;
-    for (cnt = item_size / sizeof(UWord); cnt; cnt--) {
-        UWord tmp = *jwp;
+    unsigned long* iwp = (unsigned long*) iptr;
+    unsigned long* jwp = (unsigned long*) jptr;
+    unsigned cnt;
+    for (cnt = item_size / sizeof(unsigned long); cnt; cnt--) {
+        unsigned long tmp = *jwp;
         *jwp = *iwp;
         *iwp = tmp;
         jwp++;
@@ -63,45 +42,74 @@ static void erts_qsort_swap(size_t item_size,
     }
 }
 
-static byte*
-erts_qsort_partion_array(byte *base,
-                         size_t nr_of_items,
-                         size_t item_size,
+
+static void check_partitions(char *base,
+                             unsigned nr_of_items,
+                             unsigned item_size,
+                             erts_void_ptr_cmp_t compare,
+                             char* pivot)
+{
+    char *p = base;
+    char *end = base + (nr_of_items * item_size);
+
+    while (p < pivot) {
+        ASSERT(compare(p, pivot) <= 0, "HIGHER THAN PIVOT");
+        p += item_size;
+    }
+
+    p += item_size;
+
+    while (p < end) {
+        ASSERT(compare(p, pivot) > 0, "NOT HIGHER THAN PIVOT");
+        p += item_size;
+    }
+}
+
+static char*
+erts_qsort_partion_array(char *base,
+                         unsigned nr_of_items,
+                         unsigned item_size,
                          erts_void_ptr_cmp_t compare)
 {
-    byte* second_part_start = base + (nr_of_items * item_size);
-    byte* curr = base + item_size;
-    byte* pivot;
+    char* second_part_start = base + (nr_of_items * item_size);
+    char* curr = base + item_size;
+    char* pivot;
+
+    /* Use first element *base as pivot */
 
     while (curr != second_part_start) {
         int compare_res = compare(curr, base);
-        if (compare_res < 0) {
-            /* Include in first part */
+        if (compare_res <= 0) {
+            /* Keep in first part */
             curr += item_size;
         } else {
-            /* Move to last part */
+            /* Move to second part */
+
+            /* BUG: After this branch first is taken the loop will never call
+             * BUG: compare() again. It seems it thinks *curr and *base are the
+             * BUG: same as the pointers haven't changed.
+             */
             second_part_start -= item_size;
             erts_qsort_swap(item_size, curr, second_part_start);
         }
     }
+    /* Put pivot into place */
     pivot = second_part_start - item_size;
     erts_qsort_swap(item_size, base, pivot);
-    erts_qsort_check_part(base,
-                          nr_of_items,
-                          item_size,
-                          compare,
-                          pivot);
+
+    /* Check if BUG has happened */
+    check_partitions(base, nr_of_items, item_size, compare, pivot);
     return pivot;
 }
 
-static void erts_qsort_helper(byte *base,
-                              size_t nr_of_items,
-                              size_t item_size,
-                              erts_void_ptr_cmp_t compare)
+void erts_qsort(char *base,
+                unsigned nr_of_items,
+                unsigned item_size,
+                erts_void_ptr_cmp_t compare)
 {
-    byte *pivot;
-    size_t nr_of_items_in_first_partion;
-    size_t nr_of_items_second_partion;
+    char *pivot;
+    unsigned items_in_1st_part;
+    unsigned items_in_2nd_part;
     if (nr_of_items <= 1){
         return;
     }
@@ -109,30 +117,16 @@ static void erts_qsort_helper(byte *base,
                                      nr_of_items,
                                      item_size,
                                      compare);
-    nr_of_items_in_first_partion = (pivot - base) / item_size;
-    nr_of_items_second_partion = nr_of_items - ((pivot - base) / item_size) - 1;
-    erts_qsort_helper(base,
-                      nr_of_items_in_first_partion,
-                      item_size, compare);
-    erts_qsort_helper(pivot + item_size,
-                      nr_of_items_second_partion,
-                      item_size,
-                      compare);
+    items_in_1st_part = (pivot - base) / item_size;
+    items_in_2nd_part = nr_of_items - items_in_1st_part - 1;
+    erts_qsort(base,
+               items_in_1st_part,
+               item_size,
+               compare);
+    erts_qsort(pivot + item_size,
+               items_in_2nd_part,
+               item_size,
+               compare);
 }
 
-/***************
- ** Quicksort **
- ***************
- *
- * A quicksort implementation with the same interface as the qsort
- * function in the C standard library.
- *
- */
-void erts_qsort(void *base,
-                size_t nr_of_items,
-                size_t item_size,
-                erts_void_ptr_cmp_t compare)
-{
-    erts_qsort_helper((byte*)base, nr_of_items, item_size, compare);
-}
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+FLAGS="-flto -O3 -g"
+
+gcc-10 $FLAGS -c erl_map.c -o erl_map.o
+gcc-10 $FLAGS -c utils.c -o utils.o
+
+gcc-10 -o exe erl_map.o utils.o
+       
