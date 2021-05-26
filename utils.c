@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "utils.h"
 
@@ -34,9 +35,10 @@ static void erts_qsort_swap(unsigned item_size,
     unsigned long* jwp = (unsigned long*) jptr;
     unsigned cnt;
     for (cnt = item_size / sizeof(unsigned long); cnt; cnt--) {
-        unsigned long tmp = *jwp;
-        *jwp = *iwp;
-        *iwp = tmp;
+        unsigned long tmp;
+        memcpy(&tmp, jwp, sizeof(long));
+        memcpy(jwp, iwp, sizeof(long));
+        memcpy(iwp, &tmp, sizeof(long));
         jwp++;
         iwp++;
     }
