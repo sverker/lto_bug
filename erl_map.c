@@ -26,8 +26,10 @@ typedef struct {
     unsigned skip;
 } hxnode_t;
 
-static int hxnodecmp(hxnode_t *a, hxnode_t *b)
+static int hxnodecmp(const char *a0, const char *b0)
 {
+    const hxnode_t *a = (const hxnode_t *) a0, *b = (const hxnode_t *) b0;
+
     if (a->hx > b->hx)
 	return 1;
     else if (a->hx == b->hx)
@@ -41,7 +43,7 @@ int main(int argc, char **argv)
     hxnode_t hxns[] = { {1}, {2}, {0}, };
     unsigned n = sizeof(hxns) / sizeof(*hxns);
 
-    erts_qsort((char*)hxns, n, sizeof(hxnode_t), (erts_void_ptr_cmp_t) hxnodecmp);
+    erts_qsort((char*)hxns, n, sizeof(hxnode_t), hxnodecmp);
 
     /* Read and return from sort result to make sure the entire erts_qsort()
      * is not optimized away.
